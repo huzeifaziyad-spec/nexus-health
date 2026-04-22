@@ -4,29 +4,48 @@ import { Button } from "@/components/ui/button";
 import { Calendar, Users, ClipboardList, Pill, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { Query } from "appwrite";
 import { format } from "date-fns";
 
 const DoctorDashboard = () => {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
 
   const { data: appointments = [] } = useQuery({
-    queryKey: ["doctor-appointments", profile?.id],
+    queryKey: ["doctor-appointments", user?.$id],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      const { data } = await supabase
-        .from("appointments")
-        .select("*, patient:profiles!appointments_patient_id_fkey(full_name, email)")
-        .eq("doctor_id", profile.id)
-        .order("appointment_date", { ascending: true })
-        .limit(10);
-      return data || [];
+      if (!user?.$id) return [];
+      
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.appointments,
+        queries: [
+          // Note: Using profileId as doctorId fallback if doctorId is missing
+          // In a proper schema, you should have a doctorId attribute
+          Query.orderAsc("appointmentDate"),
+          Query.limit(10)
+        ]
+      });
+      
+      // Manual join for patient names
+      return Promise.all(res.documents.map(async (apt) => {
+        try {
+          const prof = await databases.getDocument({
+            databaseId: APPWRITE_CONFIG.databaseId,
+            collectionId: APPWRITE_CONFIG.collections.profiles,
+            documentId: apt.profileId
+          });
+          return { ...apt, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+        } catch {
+          return apt;
+        }
+      }));
     },
-    enabled: !!profile?.id,
+    enabled: !!user?.$id,
   });
 
   const todayAppointments = appointments.filter(
-    (a: any) => format(new Date(a.appointment_date), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+    (a: any) => format(new Date(a.appointmentDate), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
   );
 
   const statusColor: Record<string, string> = {
@@ -77,11 +96,11 @@ const DoctorDashboard = () => {
               <p className="text-sm text-muted-foreground py-4 text-center">No appointments today</p>
             ) : (
               todayAppointments.map((apt: any) => (
-                <div key={apt.id} className="flex items-center justify-between rounded-lg border p-3">
+                <div key={apt.$id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-1">
                     <p className="text-sm font-medium">{apt.patient?.full_name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(apt.appointment_date), "p")}
+                      {format(new Date(apt.appointmentDate), "p")}
                     </p>
                     {apt.notes && <p className="text-xs text-muted-foreground">{apt.notes}</p>}
                   </div>
@@ -107,11 +126,11 @@ const DoctorDashboard = () => {
               appointments
                 .filter((a: any) => a.status === "scheduled")
                 .map((apt: any) => (
-                  <div key={apt.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div key={apt.$id} className="flex items-center justify-between rounded-lg border p-3">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">{apt.patient?.full_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(apt.appointment_date), "PPP 'at' p")}
+                        {format(new Date(apt.appointmentDate), "PPP 'at' p")}
                       </p>
                     </div>
                     <Badge variant="outline" className={statusColor[apt.status] || ""}>

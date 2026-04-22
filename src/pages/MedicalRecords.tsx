@@ -2,28 +2,45 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { Query } from "appwrite";
 import { format } from "date-fns";
 import { FileText } from "lucide-react";
 
 const MedicalRecords = () => {
-  const { profile, role } = useAuth();
+  const { profile, role, user } = useAuth();
 
   const { data: records = [] } = useQuery({
-    queryKey: ["medical-records", profile?.id, role],
+    queryKey: ["medical-records", user?.$id, role],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      let query = supabase
-        .from("medical_records")
-        .select("*, patient:profiles!medical_records_patient_id_fkey(full_name), doctor:profiles!medical_records_doctor_id_fkey(full_name)")
-        .order("record_date", { ascending: false });
+      if (!user?.$id) return [];
+      
+      let queries = [Query.orderDesc("visitDate")];
+      if (role === "patient") queries.push(Query.equal("profileId", user.$id));
 
-      if (role === "patient") query = query.eq("patient_id", profile.id);
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.records,
+        queries: queries
+      });
 
-      const { data } = await query;
-      return data || [];
+      // Fetch patient/doctor names if needed
+      const recordsWithProfiles = await Promise.all(res.documents.map(async (rec) => {
+        try {
+          const prof = await databases.getDocument({
+            databaseId: APPWRITE_CONFIG.databaseId,
+            collectionId: APPWRITE_CONFIG.collections.profiles,
+            documentId: rec.profileId
+          });
+          return { ...rec, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+        } catch {
+          return rec;
+        }
+      }));
+
+      return recordsWithProfiles;
     },
-    enabled: !!profile?.id,
+    enabled: !!user?.$id,
   });
 
   return (
@@ -45,12 +62,12 @@ const MedicalRecords = () => {
       ) : (
         <div className="space-y-4">
           {records.map((rec: any) => (
-            <Card key={rec.id}>
+            <Card key={rec.$id}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">{rec.diagnosis || "General Checkup"}</CardTitle>
                   <span className="text-xs text-muted-foreground">
-                    {format(new Date(rec.record_date), "PPP")}
+                    {format(new Date(rec.visitDate || new Date()), "PPP")}
                   </span>
                 </div>
                 {role !== "patient" && rec.patient && (
@@ -58,10 +75,10 @@ const MedicalRecords = () => {
                 )}
               </CardHeader>
               <CardContent className="space-y-2">
-                {rec.treatment && (
+                {rec.treatmentPlan && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Treatment</p>
-                    <p className="text-sm">{rec.treatment}</p>
+                    <p className="text-sm">{rec.treatmentPlan}</p>
                   </div>
                 )}
                 {rec.notes && (

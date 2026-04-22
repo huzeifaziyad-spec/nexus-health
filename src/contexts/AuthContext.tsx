@@ -1,13 +1,12 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { account, databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { Models } from "appwrite";
+import { Query } from "appwrite";
 
 type AppRole = "admin" | "doctor" | "patient";
 
 interface AuthContextType {
-  session: Session | null;
-  user: User | null;
+  user: Models.User<Models.Preferences> | null;
   role: AppRole | null;
   profile: any | null;
   loading: boolean;
@@ -15,75 +14,122 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({
-  session: null,
   user: null,
   role: null,
   profile: null,
   loading: true,
-  signOut: async () => {},
+  signOut: async () => { },
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Models.User<Models.Preferences> | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = async (userId: string, labels: string[] = []) => {
     try {
-      const [profileRes, roleRes] = await Promise.all([
-        supabase.from("profiles").select("*").eq("user_id", userId).single(),
-        supabase.from("user_roles").select("role").eq("user_id", userId).single(),
-      ]);
+      let profileRes = null;
 
-      if (profileRes.data) setProfile(profileRes.data);
-      if (roleRes.data) setRole(roleRes.data.role as AppRole);
+      try {
+        profileRes = await databases.getDocument({
+          databaseId: APPWRITE_CONFIG.databaseId,
+          collectionId: APPWRITE_CONFIG.collections.profiles,
+          documentId: userId
+        });
+      } catch (e: any) {
+        if (e.code === 404) {
+          // Auto-create default profile for new/OAuth users
+          const currentUser = await account.get();
+          const nameParts = (currentUser.name || "").split(" ");
+          profileRes = await databases.createDocument({
+            databaseId: APPWRITE_CONFIG.databaseId,
+            collectionId: APPWRITE_CONFIG.collections.profiles,
+            documentId: userId,
+            data: {
+              firstName: nameParts[0] || "User",
+              lastName: nameParts.slice(1).join(" ") || "",
+              dateOfBirth: new Date("1900-01-01").toISOString(), // Full ISO format for Datetime type
+              role: "patient" // Default role
+            }
+          });
+        } else {
+          throw e;
+        }
+      }
+
+      const currentUser = await account.get();
+      const authName = currentUser.name || "";
+
+      if (profileRes) {
+        const dbName = (`${profileRes.firstName || ""} ${profileRes.lastName || ""}`).trim();
+        setProfile({
+          ...profileRes,
+          full_name: dbName || authName || "User"
+        });
+      } else {
+        setProfile({
+          full_name: authName || "User"
+        });
+      }
+
+      // Determine role: Priority 1: Auth Labels, Priority 2: Database Field
+      let finalRole: AppRole = "patient";
+
+      if (labels.includes("admin")) {
+        finalRole = "admin";
+      } else if (labels.includes("doctor")) {
+        finalRole = "doctor";
+      } else if (profileRes?.role) {
+        // Support roles stored in the database profiles collection
+        const dbRole = profileRes.role.toLowerCase();
+        if (dbRole === "admin" || dbRole === "doctor" || dbRole === "patient") {
+          finalRole = dbRole as AppRole;
+        }
+      }
+
+      console.log("Calculated Role:", finalRole, "(from labels:", labels, "db:", profileRes?.role, ")");
+      setRole(finalRole);
     } catch (error) {
-      console.error("Error fetching user data:", error);
+      console.error("Error fetching user data from Appwrite:", error);
     }
   };
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-
-        if (session?.user) {
-          setTimeout(() => fetchUserData(session.user.id), 0);
-        } else {
-          setRole(null);
-          setProfile(null);
-        }
+    const checkSession = async () => {
+      try {
+        const currentUser = await account.get();
+        setUser(currentUser);
+        await fetchUserData(currentUser.$id, currentUser.labels);
+      } catch (error) {
+        setUser(null);
+        setRole(null);
+        setProfile(null);
+      } finally {
         setLoading(false);
       }
-    );
+    };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    checkSession();
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-    setUser(null);
-    setRole(null);
-    setProfile(null);
+    try {
+      await account.deleteSession({
+        sessionId: 'current'
+      });
+      setUser(null);
+      setRole(null);
+      setProfile(null);
+    } catch (error) {
+      console.error("Error signing out from Appwrite:", error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ user, role, profile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

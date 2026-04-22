@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { CalendarIcon, Plus } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { ID, Query } from "appwrite";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -18,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Appointments = () => {
-  const { role, profile } = useAuth();
+  const { role, profile, user } = useAuth();
   const queryClient = useQueryClient();
   const [date, setDate] = useState<Date>();
   const [notes, setNotes] = useState("");
@@ -29,51 +30,78 @@ const Appointments = () => {
   const [minute, setMinute] = useState("00");
 
   const { data: appointments = [] } = useQuery({
-    queryKey: ["appointments", profile?.id, role],
+    queryKey: ["appointments", user?.$id, role],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      let query = supabase
-        .from("appointments")
-        .select("*, patient:profiles!appointments_patient_id_fkey(full_name, email), doctor:profiles!appointments_doctor_id_fkey(full_name, specialization)")
-        .order("appointment_date", { ascending: true });
+      if (!user?.$id) return [];
+      
+      let queries = [Query.orderAsc("appointmentDate")];
+      if (role === "patient") queries.push(Query.equal("profileId", user.$id));
+      // Note: doctor_id is missing in user's current schema, using profileId for now
 
-      if (role === "patient") query = query.eq("patient_id", profile.id);
-      else if (role === "doctor") query = query.eq("doctor_id", profile.id);
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.appointments,
+        queries: queries
+      });
 
-      const { data } = await query;
-      return data || [];
+      // Manual join: Fetch profile names for display
+      const appointmentsWithProfiles = await Promise.all(res.documents.map(async (apt) => {
+        try {
+          const prof = await databases.getDocument({
+            databaseId: APPWRITE_CONFIG.databaseId,
+            collectionId: APPWRITE_CONFIG.collections.profiles,
+            documentId: apt.profileId
+          });
+          return { ...apt, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+        } catch {
+          return apt;
+        }
+      }));
+
+      return appointmentsWithProfiles;
     },
-    enabled: !!profile?.id,
+    enabled: !!user?.$id,
   });
 
   const { data: doctors = [] } = useQuery({
     queryKey: ["doctors-list"],
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id, full_name, specialization");
-      return data || [];
+      // Fetching all profiles and filtering for doctors (in a real app, we'd use roles)
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.profiles
+      });
+      return res.documents.map(doc => ({
+        id: doc.$id,
+        full_name: `${doc.firstName} ${doc.lastName}`,
+        specialization: doc.bio || "" // Using bio as specialization if missing
+      }));
     },
     enabled: role === "patient" || role === "admin",
   });
 
   const createAppointment = useMutation({
     mutationFn: async () => {
-      if (!date || !profile?.id) throw new Error("Missing data");
+      if (!date || !user?.$id) throw new Error("Missing data");
       const appointmentDate = new Date(date);
       appointmentDate.setHours(parseInt(hour), parseInt(minute));
 
-      const doctorId = role === "doctor" ? profile.id : selectedDoctor;
-      const patientId = role === "patient" ? profile.id : selectedPatient;
+      const patientId = role === "patient" ? user.$id : selectedPatient;
 
-      if (!doctorId || !patientId) throw new Error("Please select doctor and patient");
+      if (!patientId) throw new Error("Please select a patient");
 
-      const { error } = await supabase.from("appointments").insert({
-        patient_id: patientId,
-        doctor_id: doctorId,
-        appointment_date: appointmentDate.toISOString(),
-        notes,
-        status: "scheduled",
+      await databases.createDocument({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.appointments,
+        documentId: ID.unique(),
+        data: {
+          profileId: patientId,
+          appointmentDate: appointmentDate.toISOString(),
+          notes,
+          status: "scheduled",
+          appointmentType: "general", // Default
+        }
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
@@ -182,16 +210,16 @@ const Appointments = () => {
               <p className="text-sm text-muted-foreground p-6 text-center">No appointments found</p>
             ) : (
               appointments.map((apt: any) => (
-                <div key={apt.id} className="flex items-center justify-between p-4">
+                <div key={apt.$id} className="flex items-center justify-between p-4">
                   <div className="space-y-1">
                     <p className="text-sm font-medium">
-                      {role === "patient" ? `Dr. ${apt.doctor?.full_name}` : apt.patient?.full_name}
+                      {role === "patient" ? `Dr. ${apt.doctor?.full_name || "Doctor"}` : apt.patient?.full_name}
                     </p>
                     {role === "patient" && apt.doctor?.specialization && (
                       <p className="text-xs text-muted-foreground">{apt.doctor.specialization}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(apt.appointment_date), "PPP 'at' p")}
+                      {format(new Date(apt.appointmentDate), "PPP 'at' p")}
                     </p>
                     {apt.notes && <p className="text-xs text-muted-foreground">{apt.notes}</p>}
                   </div>

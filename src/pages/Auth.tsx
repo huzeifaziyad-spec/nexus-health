@@ -1,45 +1,39 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { account, databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { ID } from "appwrite";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { toast } from "sonner";
-import { Heart, Shield, Stethoscope, UserRound } from "lucide-react";
+import { Heart, Shield, Stethoscope, UserRound, ArrowLeft } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [step, setStep] = useState<"initial" | "otp">("initial");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [userId, setUserId] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<string>("patient");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        toast.success("Welcome back!");
-        navigate("/dashboard");
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName, role },
-            emailRedirectTo: window.location.origin,
-          },
-        });
-        if (error) throw error;
-        toast.success("Account created! Please check your email to verify.");
-      }
+      const token = await account.createEmailToken({
+        userId: userId || ID.unique(),
+        email: email
+      });
+      setUserId(token.userId);
+      setStep("otp");
+      toast.success("Verification code sent to your email!");
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -47,10 +41,60 @@ const Auth = () => {
     }
   };
 
-  const roleIcons = {
-    patient: <UserRound className="h-4 w-4" />,
-    doctor: <Stethoscope className="h-4 w-4" />,
-    admin: <Shield className="h-4 w-4" />,
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // Ensure any existing session is cleared first
+      try {
+        await account.deleteSession({ sessionId: 'current' });
+      } catch (e) {
+        // Ignore error if no session was active
+      }
+
+      await account.createSession({
+        userId: userId,
+        secret: otp
+      });
+
+      // SYNC NAME WITH AUTH SERVICE
+      if (!isLogin && fullName) {
+        try {
+          await account.updateName(fullName);
+        } catch (nameError) {
+          console.error("Failed to update name in Auth service:", nameError);
+        }
+      }
+
+      if (!isLogin) {
+        // Create profile document with role for new users
+        const nameParts = fullName.split(" ");
+        const firstName = nameParts[0] || "User";
+        const lastName = nameParts.slice(1).join(" ") || "";
+
+        await databases.createDocument({
+          databaseId: APPWRITE_CONFIG.databaseId,
+          collectionId: APPWRITE_CONFIG.collections.profiles,
+          documentId: userId,
+          data: {
+            firstName: firstName,
+            lastName: lastName,
+            dateOfBirth: new Date("1900-01-01").toISOString(), // Required field
+            role: role, // Save role directly in profile
+          }
+        });
+        toast.success("Account created successfully!");
+      } else {
+        toast.success("Welcome back!");
+      }
+
+      window.location.href = "/dashboard";
+    } catch (error: any) {
+      toast.error(error.message || "Invalid verification code");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -66,88 +110,130 @@ const Auth = () => {
 
         <Card className="border-border/50 shadow-lg">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-2xl">{isLogin ? "Welcome back" : "Create account"}</CardTitle>
+            <div className="flex items-center gap-2">
+              {step === "otp" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setStep("initial")}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <CardTitle className="text-2xl">
+                {step === "otp" ? "Verify Email" : isLogin ? "Welcome back" : "Create account"}
+              </CardTitle>
+            </div>
             <CardDescription>
-              {isLogin ? "Sign in to access your dashboard" : "Register to get started"}
+              {step === "otp"
+                ? `Enter the 6-digit code sent to ${email}`
+                : isLogin ? "Sign in to access your dashboard" : "Register to get started"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!isLogin && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">Full Name</Label>
-                    <Input
-                      id="fullName"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Dr. Jane Smith"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Select value={role} onValueChange={setRole}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select your role" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="patient">
-                          <span className="flex items-center gap-2">
-                            <UserRound className="h-4 w-4" /> Patient
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="doctor">
-                          <span className="flex items-center gap-2">
-                            <Stethoscope className="h-4 w-4" /> Doctor
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="admin">
-                          <span className="flex items-center gap-2">
-                            <Shield className="h-4 w-4" /> Admin
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </>
-              )}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                />
+            {step === "initial" ? (
+              <form onSubmit={handleSendOTP} className="space-y-4">
+                {!isLogin && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="fullName">Full Name</Label>
+                      <Input
+                        id="fullName"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Dr. Jane Smith"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role</Label>
+                      <Select value={role} onValueChange={setRole}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select your role" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="patient">
+                            <span className="flex items-center gap-2">
+                              <UserRound className="h-4 w-4" /> Patient
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="doctor">
+                            <span className="flex items-center gap-2">
+                              <Stethoscope className="h-4 w-4" /> Doctor
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="admin">
+                            <span className="flex items-center gap-2">
+                              <Shield className="h-4 w-4" /> Admin
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Please wait..." : isLogin ? "Send Verification Code" : "Create Account"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOTP} className="space-y-6">
+                <div className="space-y-2 flex flex-col items-center">
+                  <Label htmlFor="otp" className="sr-only">Verification Code</Label>
+                  <InputOTP
+                    maxLength={6}
+                    value={otp}
+                    onChange={(value) => setOtp(value)}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading || otp.length !== 6}>
+                  {loading ? "Verifying..." : "Verify & Sign In"}
+                </Button>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={handleSendOTP}
+                    disabled={loading}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Didn't receive a code? Resend
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {step === "initial" && (
+              <div className="mt-4 text-center text-sm">
+                <button
+                  type="button"
+                  onClick={() => setIsLogin(!isLogin)}
+                  className="text-primary hover:underline"
+                >
+                  {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+                </button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
-              </Button>
-            </form>
-            <div className="mt-4 text-center text-sm">
-              <button
-                type="button"
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-primary hover:underline"
-              >
-                {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-              </button>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

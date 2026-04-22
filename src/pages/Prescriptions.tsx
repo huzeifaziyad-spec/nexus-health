@@ -1,29 +1,46 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { Query } from "appwrite";
 import { format } from "date-fns";
 import { Pill } from "lucide-react";
 
 const Prescriptions = () => {
-  const { profile, role } = useAuth();
+  const { profile, role, user } = useAuth();
 
   const { data: prescriptions = [] } = useQuery({
-    queryKey: ["prescriptions", profile?.id, role],
+    queryKey: ["prescriptions", user?.$id, role],
     queryFn: async () => {
-      if (!profile?.id) return [];
-      let query = supabase
-        .from("prescriptions")
-        .select("*, patient:profiles!prescriptions_patient_id_fkey(full_name), doctor:profiles!prescriptions_doctor_id_fkey(full_name)")
-        .order("prescribed_date", { ascending: false });
+      if (!user?.$id) return [];
+      
+      let queries = [Query.orderDesc("$createdAt")];
+      if (role === "patient") queries.push(Query.equal("patientId", user.$id));
+      // In user's schema, prescribingDoctor seems to be a field in prescriptions
 
-      if (role === "patient") query = query.eq("patient_id", profile.id);
-      else if (role === "doctor") query = query.eq("doctor_id", profile.id);
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.prescriptions,
+        queries: queries
+      });
 
-      const { data } = await query;
-      return data || [];
+      // Fetch patient names for display if needed
+      const prescriptionsWithProfiles = await Promise.all(res.documents.map(async (rx) => {
+        try {
+          const prof = await databases.getDocument({
+            databaseId: APPWRITE_CONFIG.databaseId,
+            collectionId: APPWRITE_CONFIG.collections.profiles,
+            documentId: rx.patientId
+          });
+          return { ...rx, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+        } catch {
+          return rx;
+        }
+      }));
+
+      return prescriptionsWithProfiles;
     },
-    enabled: !!profile?.id,
+    enabled: !!user?.$id,
   });
 
   return (
@@ -45,15 +62,15 @@ const Prescriptions = () => {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {prescriptions.map((rx: any) => (
-            <Card key={rx.id}>
+            <Card key={rx.$id}>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Pill className="h-4 w-4 text-primary" />
-                    {rx.medication}
+                    {rx.medicationName}
                   </CardTitle>
                   <span className="text-xs text-muted-foreground">
-                    {format(new Date(rx.prescribed_date), "MMM d, yyyy")}
+                    {format(new Date(rx.$createdAt), "MMM d, yyyy")}
                   </span>
                 </div>
               </CardHeader>
@@ -68,16 +85,16 @@ const Prescriptions = () => {
                     <span>{rx.frequency}</span>
                   </div>
                 )}
-                {rx.duration && (
+                {rx.expirationDate && (
                   <div className="flex gap-4 text-sm">
-                    <span className="text-muted-foreground">Duration:</span>
-                    <span>{rx.duration}</span>
+                    <span className="text-muted-foreground">Expires:</span>
+                    <span>{format(new Date(rx.expirationDate), "MMM d, yyyy")}</span>
                   </div>
                 )}
                 {rx.notes && <p className="text-xs text-muted-foreground mt-2">{rx.notes}</p>}
                 <div className="pt-2 flex justify-between text-xs text-muted-foreground">
                   {role !== "patient" && rx.patient && <span>Patient: {rx.patient.full_name}</span>}
-                  {role !== "doctor" && rx.doctor && <span>Dr. {rx.doctor.full_name}</span>}
+                  <span>Dr. {rx.prescribingDoctor || "Doctor"}</span>
                 </div>
               </CardContent>
             </Card>
