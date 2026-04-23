@@ -31,9 +31,9 @@ const PatientDashboard = () => {
           const prof = await databases.getDocument({
             databaseId: APPWRITE_CONFIG.databaseId,
             collectionId: APPWRITE_CONFIG.collections.profiles,
-            documentId: apt.profileId
+            documentId: apt.doctorId || apt.profileId // Fallback if doctorId is missing
           });
-          return { ...apt, doctor: { full_name: `${prof.firstName} ${prof.lastName}` } };
+          return { ...apt, doctor: { full_name: `${prof.firstName} ${prof.lastName}`, specialization: prof.bio || "General" } };
         } catch {
           return apt;
         }

@@ -1,6 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Calendar, BarChart3, Receipt, Activity, TrendingUp } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { useQuery } from "@tanstack/react-query";
+import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
+import { Query } from "appwrite";
+import { startOfDay, endOfDay, format } from "date-fns";
 
 const mockBarData = [
   { month: "Jan", patients: 45 },
@@ -28,6 +32,67 @@ const COLORS = [
 ];
 
 const AdminDashboard = () => {
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ["admin-stats"],
+    queryFn: async () => {
+      const [patientsRes, doctorsRes, allAppointmentsRes] = await Promise.all([
+        databases.listDocuments({
+          databaseId: APPWRITE_CONFIG.databaseId,
+          collectionId: APPWRITE_CONFIG.collections.profiles,
+          queries: [Query.equal("role", "patient"), Query.limit(1)]
+        }),
+        databases.listDocuments({
+          databaseId: APPWRITE_CONFIG.databaseId,
+          collectionId: APPWRITE_CONFIG.collections.profiles,
+          queries: [Query.equal("role", "doctor"), Query.limit(1)]
+        }),
+        databases.listDocuments({
+          databaseId: APPWRITE_CONFIG.databaseId,
+          collectionId: APPWRITE_CONFIG.collections.appointments,
+          queries: [Query.limit(100), Query.orderDesc("appointmentDate")]
+        })
+      ]);
+
+      // Group appointments by month for the chart
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const currentMonth = new Date().getMonth();
+      const last6Months = [];
+      
+      for (let i = 5; i >= 0; i--) {
+        const monthIndex = (currentMonth - i + 12) % 12;
+        last6Months.push({ month: months[monthIndex], patients: 0, index: monthIndex });
+      }
+
+      allAppointmentsRes.documents.forEach((apt: any) => {
+        if (!apt.appointmentDate) return;
+        const date = new Date(apt.appointmentDate);
+        const monthName = months[date.getMonth()];
+        const monthData = last6Months.find(m => m.month === monthName);
+        if (monthData) monthData.patients++;
+      });
+
+      const appointmentsToday = allAppointmentsRes.documents.filter((apt: any) => 
+        apt.appointmentDate && format(new Date(apt.appointmentDate), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
+      ).length;
+
+      return {
+        totalPatients: patientsRes.total,
+        totalDoctors: doctorsRes.total,
+        appointmentsToday: appointmentsToday,
+        chartData: last6Months
+      };
+    }
+  });
+
+  const chartData = stats?.chartData || mockBarData;
+
+  const statCards = [
+    { label: "Total Patients", value: isLoading ? "..." : stats?.totalPatients.toString(), icon: Users, color: "text-primary", change: "+0%" },
+    { label: "Total Doctors", value: isLoading ? "..." : stats?.totalDoctors.toString(), icon: Activity, color: "text-success", change: "+0%" },
+    { label: "Appointments Today", value: isLoading ? "..." : stats?.appointmentsToday.toString(), icon: Calendar, color: "text-accent", change: "+0%" },
+    { label: "Revenue (MTD)", value: "$0.00", icon: Receipt, color: "text-warning", change: "+0%" },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -36,15 +101,10 @@ const AdminDashboard = () => {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Total Patients", value: "1,248", icon: Users, color: "text-primary", change: "+12%" },
-          { label: "Appointments Today", value: "42", icon: Calendar, color: "text-accent", change: "+5%" },
-          { label: "Revenue (MTD)", value: "$84.2K", icon: Receipt, color: "text-warning", change: "+8%" },
-          { label: "Bed Occupancy", value: "78%", icon: Activity, color: "text-info", change: "-2%" },
-        ].map((stat) => (
-          <Card key={stat.label} className="stat-gradient">
+        {statCards.map((stat) => (
+          <Card key={stat.label} className="stat-gradient border-border/50">
             <CardContent className="flex items-center gap-4 p-4">
-              <div className={`rounded-lg bg-card p-2.5 shadow-sm ${stat.color}`}>
+              <div className={`rounded-lg bg-card p-2.5 shadow-sm ${stat.color} border border-border/50`}>
                 <stat.icon className="h-5 w-5" />
               </div>
               <div className="flex-1">
@@ -63,32 +123,33 @@ const AdminDashboard = () => {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 border-border/50 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Patient Inflow</CardTitle>
             <CardDescription>Monthly patient admissions</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={mockBarData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(210, 20%, 90%)" />
-                <XAxis dataKey="month" stroke="hsl(215, 15%, 50%)" fontSize={12} />
-                <YAxis stroke="hsl(215, 15%, 50%)" fontSize={12} />
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                 <Tooltip
+                  cursor={{ fill: "hsl(var(--muted)/0.1)" }}
                   contentStyle={{
-                    backgroundColor: "hsl(0, 0%, 100%)",
-                    border: "1px solid hsl(210, 20%, 90%)",
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
                     borderRadius: "8px",
                     fontSize: "12px",
                   }}
                 />
-                <Bar dataKey="patients" fill="hsl(210, 85%, 45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="patients" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-border/50 shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Departments</CardTitle>
             <CardDescription>Patient distribution</CardDescription>
@@ -101,8 +162,10 @@ const AdminDashboard = () => {
                   cx="50%"
                   cy="50%"
                   outerRadius={80}
+                  innerRadius={60}
                   dataKey="value"
                   stroke="none"
+                  paddingAngle={5}
                 >
                   {mockPieData.map((_, index) => (
                     <Cell key={index} fill={COLORS[index % COLORS.length]} />
@@ -110,22 +173,22 @@ const AdminDashboard = () => {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "hsl(0, 0%, 100%)",
-                    border: "1px solid hsl(210, 20%, 90%)",
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
                     borderRadius: "8px",
                     fontSize: "12px",
                   }}
                 />
               </PieChart>
             </ResponsiveContainer>
-            <div className="mt-2 space-y-1.5">
+            <div className="mt-4 space-y-2">
               {mockPieData.map((item, i) => (
                 <div key={item.name} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                    <span className="text-muted-foreground">{item.name}</span>
+                    <span className="text-muted-foreground font-medium">{item.name}</span>
                   </div>
-                  <span className="font-medium">{item.value}%</span>
+                  <span className="font-bold">{item.value}%</span>
                 </div>
               ))}
             </div>

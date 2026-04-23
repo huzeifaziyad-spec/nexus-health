@@ -20,8 +20,7 @@ const DoctorDashboard = () => {
         databaseId: APPWRITE_CONFIG.databaseId,
         collectionId: APPWRITE_CONFIG.collections.appointments,
         queries: [
-          // Note: Using profileId as doctorId fallback if doctorId is missing
-          // In a proper schema, you should have a doctorId attribute
+          Query.equal("doctorId", user.$id),
           Query.orderAsc("appointmentDate"),
           Query.limit(10)
         ]

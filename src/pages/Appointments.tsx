@@ -47,12 +47,27 @@ const Appointments = () => {
       // Manual join: Fetch profile names for display
       const appointmentsWithProfiles = await Promise.all(res.documents.map(async (apt) => {
         try {
-          const prof = await databases.getDocument({
-            databaseId: APPWRITE_CONFIG.databaseId,
-            collectionId: APPWRITE_CONFIG.collections.profiles,
-            documentId: apt.profileId
-          });
-          return { ...apt, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+          const [patientProf, doctorProf] = await Promise.all([
+            databases.getDocument({
+              databaseId: APPWRITE_CONFIG.databaseId,
+              collectionId: APPWRITE_CONFIG.collections.profiles,
+              documentId: apt.profileId
+            }),
+            apt.doctorId ? databases.getDocument({
+              databaseId: APPWRITE_CONFIG.databaseId,
+              collectionId: APPWRITE_CONFIG.collections.profiles,
+              documentId: apt.doctorId
+            }).catch(() => null) : Promise.resolve(null)
+          ]);
+
+          return { 
+            ...apt, 
+            patient: { full_name: `${patientProf.firstName} ${patientProf.lastName}` },
+            doctor: doctorProf ? { 
+              full_name: `${doctorProf.firstName} ${doctorProf.lastName}`,
+              specialization: doctorProf.bio || "General Physician"
+            } : null
+          };
         } catch {
           return apt;
         }
@@ -66,18 +81,34 @@ const Appointments = () => {
   const { data: doctors = [] } = useQuery({
     queryKey: ["doctors-list"],
     queryFn: async () => {
-      // Fetching all profiles and filtering for doctors (in a real app, we'd use roles)
       const res = await databases.listDocuments({
         databaseId: APPWRITE_CONFIG.databaseId,
-        collectionId: APPWRITE_CONFIG.collections.profiles
+        collectionId: APPWRITE_CONFIG.collections.profiles,
+        queries: [Query.equal("role", "doctor")]
       });
       return res.documents.map(doc => ({
         id: doc.$id,
         full_name: `${doc.firstName} ${doc.lastName}`,
-        specialization: doc.bio || "" // Using bio as specialization if missing
+        specialization: doc.bio || "General Physician"
       }));
     },
     enabled: role === "patient" || role === "admin",
+  });
+
+  const { data: patients = [] } = useQuery({
+    queryKey: ["patients-list"],
+    queryFn: async () => {
+      const res = await databases.listDocuments({
+        databaseId: APPWRITE_CONFIG.databaseId,
+        collectionId: APPWRITE_CONFIG.collections.profiles,
+        queries: [Query.equal("role", "patient")]
+      });
+      return res.documents.map(doc => ({
+        id: doc.$id,
+        full_name: `${doc.firstName} ${doc.lastName}`
+      }));
+    },
+    enabled: role === "admin" || role === "doctor",
   });
 
   const createAppointment = useMutation({
@@ -96,6 +127,8 @@ const Appointments = () => {
         documentId: ID.unique(),
         data: {
           profileId: patientId,
+          doctorId: selectedDoctor,
+          appointmentId: ID.unique(),
           appointmentDate: appointmentDate.toISOString(),
           notes,
           status: "scheduled",
@@ -137,6 +170,21 @@ const Appointments = () => {
               <DialogTitle>Book New Appointment</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
+              {(role === "admin" || role === "doctor") && (
+                <div className="space-y-2">
+                  <Label>Select Patient</Label>
+                  <Select value={selectedPatient} onValueChange={setSelectedPatient}>
+                    <SelectTrigger><SelectValue placeholder="Choose a patient" /></SelectTrigger>
+                    <SelectContent>
+                      {patients.map((pat: any) => (
+                        <SelectItem key={pat.id} value={pat.id}>
+                          {pat.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               {role === "patient" && (
                 <div className="space-y-2">
                   <Label>Select Doctor</Label>
