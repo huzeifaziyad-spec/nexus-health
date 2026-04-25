@@ -14,7 +14,7 @@ const MedicalRecords = () => {
     queryKey: ["medical-records", user?.$id, role],
     queryFn: async () => {
       if (!user?.$id) return [];
-      
+
       let queries = [Query.orderDesc("visitDate")];
       if (role === "patient") queries.push(Query.equal("profileId", user.$id));
 

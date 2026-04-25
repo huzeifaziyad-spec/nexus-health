@@ -33,7 +33,7 @@ const Appointments = () => {
     queryKey: ["appointments", user?.$id, role],
     queryFn: async () => {
       if (!user?.$id) return [];
-      
+
       let queries = [Query.orderAsc("appointmentDate")];
       if (role === "patient") queries.push(Query.equal("profileId", user.$id));
       // Note: doctor_id is missing in user's current schema, using profileId for now
@@ -60,10 +60,10 @@ const Appointments = () => {
             }).catch(() => null) : Promise.resolve(null)
           ]);
 
-          return { 
-            ...apt, 
+          return {
+            ...apt,
             patient: { full_name: `${patientProf.firstName} ${patientProf.lastName}` },
-            doctor: doctorProf ? { 
+            doctor: doctorProf ? {
               full_name: `${doctorProf.firstName} ${doctorProf.lastName}`,
               specialization: doctorProf.bio || "General Physician"
             } : null

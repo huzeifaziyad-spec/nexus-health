@@ -24,7 +24,7 @@ const PatientDashboard = () => {
           Query.limit(5)
         ]
       });
-      
+
       // Manual join for doctor names
       return Promise.all(res.documents.map(async (apt) => {
         try {

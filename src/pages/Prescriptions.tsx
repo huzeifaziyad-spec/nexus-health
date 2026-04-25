@@ -13,7 +13,7 @@ const Prescriptions = () => {
     queryKey: ["prescriptions", user?.$id, role],
     queryFn: async () => {
       if (!user?.$id) return [];
-      
+
       let queries = [Query.orderDesc("$createdAt")];
       if (role === "patient") queries.push(Query.equal("patientId", user.$id));
       // In user's schema, prescribingDoctor seems to be a field in prescriptions

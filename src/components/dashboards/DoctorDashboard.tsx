@@ -15,7 +15,7 @@ const DoctorDashboard = () => {
     queryKey: ["doctor-appointments", user?.$id],
     queryFn: async () => {
       if (!user?.$id) return [];
-      
+
       const res = await databases.listDocuments({
         databaseId: APPWRITE_CONFIG.databaseId,
         collectionId: APPWRITE_CONFIG.collections.appointments,
@@ -25,7 +25,7 @@ const DoctorDashboard = () => {
           Query.limit(10)
         ]
       });
-      
+
       // Manual join for patient names
       return Promise.all(res.documents.map(async (apt) => {
         try {
