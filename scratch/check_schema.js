@@ -28,7 +28,7 @@ async function checkSchema() {
                 } else {
                     console.log('No documents found to check schema.');
                 }
-            } catch (e: any) {
+            } catch (e) {
                 console.log(`Error: ${e.message}`);
             }
         }
