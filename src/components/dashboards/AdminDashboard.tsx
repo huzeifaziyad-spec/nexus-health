@@ -1,76 +1,34 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Calendar, BarChart3, Receipt, Activity, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { Users, Calendar, Receipt, Activity, TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
 import { Query } from "appwrite";
 import { startOfDay, endOfDay, format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 
-const mockBarData = [
-  { month: "Jan", patients: 45 },
-  { month: "Feb", patients: 62 },
-  { month: "Mar", patients: 58 },
-  { month: "Apr", patients: 71 },
-  { month: "May", patients: 80 },
-  { month: "Jun", patients: 95 },
-];
-
-const mockPieData = [
-  { name: "Cardiology", value: 30 },
-  { name: "Neurology", value: 20 },
-  { name: "Orthopedics", value: 25 },
-  { name: "Pediatrics", value: 15 },
-  { name: "General", value: 10 },
-];
-
-const COLORS = [
-  "hsl(210, 85%, 45%)",
-  "hsl(170, 65%, 45%)",
-  "hsl(38, 92%, 55%)",
-  "hsl(280, 60%, 55%)",
-  "hsl(0, 72%, 55%)",
-];
-
 const AdminDashboard = () => {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["admin-stats"],
     queryFn: async () => {
       const [patientsRes, doctorsRes, allAppointmentsRes] = await Promise.all([
-        databases.listDocuments({
-          databaseId: APPWRITE_CONFIG.databaseId,
-          collectionId: APPWRITE_CONFIG.collections.profiles,
-          queries: [Query.equal("role", "patient"), Query.limit(1)]
-        }),
-        databases.listDocuments({
-          databaseId: APPWRITE_CONFIG.databaseId,
-          collectionId: APPWRITE_CONFIG.collections.profiles,
-          queries: [Query.equal("role", "doctor"), Query.limit(1)]
-        }),
-        databases.listDocuments({
-          databaseId: APPWRITE_CONFIG.databaseId,
-          collectionId: APPWRITE_CONFIG.collections.appointments,
-          queries: [Query.limit(100), Query.orderDesc("appointmentDate")]
-        })
+        databases.listDocuments(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.profiles,
+          [Query.equal("role", "patient"), Query.limit(1)]
+        ),
+        databases.listDocuments(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.profiles,
+          [Query.equal("role", "doctor"), Query.limit(1)]
+        ),
+        databases.listDocuments(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.appointments,
+          [Query.limit(100), Query.orderDesc("appointmentDate")]
+        )
       ]);
 
-      // Group appointments by month for the chart
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const currentMonth = new Date().getMonth();
-      const last6Months = [];
-      
-      for (let i = 5; i >= 0; i--) {
-        const monthIndex = (currentMonth - i + 12) % 12;
-        last6Months.push({ month: months[monthIndex], patients: 0, index: monthIndex });
-      }
-
-      allAppointmentsRes.documents.forEach((apt: any) => {
-        if (!apt.appointmentDate) return;
-        const date = new Date(apt.appointmentDate);
-        const monthName = months[date.getMonth()];
-        const monthData = last6Months.find(m => m.month === monthName);
-        if (monthData) monthData.patients++;
-      });
 
       const appointmentsToday = allAppointmentsRes.documents.filter((apt: any) => 
         apt.appointmentDate && format(new Date(apt.appointmentDate), "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")
@@ -80,13 +38,11 @@ const AdminDashboard = () => {
         totalPatients: patientsRes.total,
         totalDoctors: doctorsRes.total,
         appointmentsToday: appointmentsToday,
-        chartData: last6Months,
         recentAppointments: allAppointmentsRes.documents
       };
     }
   });
 
-  const chartData = stats?.chartData || mockBarData;
 
   const statCards = [
     { label: "Total Patients", value: isLoading ? "..." : stats?.totalPatients.toString(), icon: Users, color: "text-primary", change: "+0%" },

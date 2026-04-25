@@ -28,11 +28,11 @@ const AdminAnalytics = () => {
   const { data: analyticsData, isLoading } = useQuery({
     queryKey: ["admin-analytics"],
     queryFn: async () => {
-      const allAppointmentsRes = await databases.listDocuments({
-        databaseId: APPWRITE_CONFIG.databaseId,
-        collectionId: APPWRITE_CONFIG.collections.appointments,
-        queries: [Query.limit(500), Query.orderDesc("appointmentDate")]
-      });
+      const allAppointmentsRes = await databases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.appointments,
+        [Query.limit(500), Query.orderDesc("appointmentDate")]
+      );
 
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       const currentMonth = new Date().getMonth();
