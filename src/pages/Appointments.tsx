@@ -36,7 +36,7 @@ const Appointments = () => {
 
       let queries = [Query.orderAsc("appointmentDate")];
       if (role === "patient") queries.push(Query.equal("profileId", user.$id));
-      // Note: doctor_id is missing in user's current schema, using profileId for now
+      if (role === "doctor") queries.push(Query.equal("doctorId", user.$id));
 
       const res = await databases.listDocuments({
         databaseId: APPWRITE_CONFIG.databaseId,
@@ -113,28 +113,30 @@ const Appointments = () => {
 
   const createAppointment = useMutation({
     mutationFn: async () => {
-      if (!date || !user?.$id) throw new Error("Missing data");
+      if (!date || !user?.$id) throw new Error("Please select a date and time");
       const appointmentDate = new Date(date);
       appointmentDate.setHours(parseInt(hour), parseInt(minute));
 
       const patientId = role === "patient" ? user.$id : selectedPatient;
+      const docId = role === "doctor" ? user.$id : selectedDoctor;
 
       if (!patientId) throw new Error("Please select a patient");
+      if (!docId) throw new Error("Please select a doctor");
 
-      await databases.createDocument({
-        databaseId: APPWRITE_CONFIG.databaseId,
-        collectionId: APPWRITE_CONFIG.collections.appointments,
-        documentId: ID.unique(),
-        data: {
+      await databases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.appointments,
+        ID.unique(),
+        {
           profileId: patientId,
-          doctorId: selectedDoctor,
+          doctorId: docId,
           appointmentId: ID.unique(),
           appointmentDate: appointmentDate.toISOString(),
           notes,
           status: "scheduled",
           appointmentType: "general", // Default
         }
-      });
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
@@ -145,11 +147,31 @@ const Appointments = () => {
       setSelectedDoctor("");
       setSelectedPatient("");
     },
+    onError: (err: any) => {
+      console.error("Booking Error:", err);
+      toast.error(err.message || "Failed to book appointment");
+    },
+  });
+
+  const updateAppointmentStatus = useMutation({
+    mutationFn: async ({ appointmentId, status }: { appointmentId: string, status: string }) => {
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.appointments,
+        appointmentId,
+        { status }
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      toast.success("Appointment status updated");
+    },
     onError: (err: any) => toast.error(err.message),
   });
 
   const statusColor: Record<string, string> = {
     scheduled: "bg-info/10 text-info border-info/20",
+    accepted: "bg-primary/10 text-primary border-primary/20",
     completed: "bg-success/10 text-success border-success/20",
     cancelled: "bg-destructive/10 text-destructive border-destructive/20",
   };
@@ -185,7 +207,7 @@ const Appointments = () => {
                   </Select>
                 </div>
               )}
-              {role === "patient" && (
+              {(role === "patient" || role === "admin") && (
                 <div className="space-y-2">
                   <Label>Select Doctor</Label>
                   <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
@@ -271,9 +293,32 @@ const Appointments = () => {
                     </p>
                     {apt.notes && <p className="text-xs text-muted-foreground">{apt.notes}</p>}
                   </div>
-                  <Badge variant="outline" className={statusColor[apt.status] || ""}>
-                    {apt.status}
-                  </Badge>
+                  <div className="flex items-center gap-4">
+                    <Badge variant="outline" className={cn("px-2 py-0.5", statusColor[apt.status])}>
+                      {apt.status}
+                    </Badge>
+                    
+                    <div className="flex gap-2">
+                      {(role === "doctor" || role === "admin") && apt.status === "scheduled" && (
+                        <Button size="sm" variant="outline" className="h-8 text-xs" 
+                          onClick={() => updateAppointmentStatus.mutate({ appointmentId: apt.$id, status: "accepted" })}>
+                          Accept
+                        </Button>
+                      )}
+                      {(role === "doctor" || role === "admin") && apt.status === "accepted" && (
+                        <Button size="sm" variant="outline" className="h-8 text-xs border-success text-success hover:bg-success/10" 
+                          onClick={() => updateAppointmentStatus.mutate({ appointmentId: apt.$id, status: "completed" })}>
+                          Complete
+                        </Button>
+                      )}
+                      {(role === "doctor" || role === "admin" || role === "patient") && (apt.status === "scheduled" || apt.status === "accepted") && (
+                        <Button size="sm" variant="outline" className="h-8 text-xs border-destructive text-destructive hover:bg-destructive/10" 
+                          onClick={() => updateAppointmentStatus.mutate({ appointmentId: apt.$id, status: "cancelled" })}>
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))
             )}
