@@ -11,6 +11,8 @@ import Appointments from "./pages/Appointments";
 import MedicalRecords from "./pages/MedicalRecords";
 import Prescriptions from "./pages/Prescriptions";
 import StaffManagement from "./pages/StaffManagement";
+import Analytics from "./pages/Analytics";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -39,8 +41,8 @@ const App = () => (
               <Route path="/records" element={<MedicalRecords />} />
               <Route path="/prescriptions" element={<Prescriptions />} />
               <Route path="/staff" element={<StaffManagement />} />
-              <Route path="/analytics" element={<Dashboard />} />
-              <Route path="/billing" element={<Dashboard />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/billing" element={<Billing />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

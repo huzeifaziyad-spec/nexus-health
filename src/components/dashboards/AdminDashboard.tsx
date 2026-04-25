@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
 import { Query } from "appwrite";
 import { startOfDay, endOfDay, format } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 const mockBarData = [
   { month: "Jan", patients: 45 },
@@ -79,7 +80,8 @@ const AdminDashboard = () => {
         totalPatients: patientsRes.total,
         totalDoctors: doctorsRes.total,
         appointmentsToday: appointmentsToday,
-        chartData: last6Months
+        chartData: last6Months,
+        recentAppointments: allAppointmentsRes.documents
       };
     }
   });
@@ -95,9 +97,11 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">Hospital overview & analytics</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground">Hospital overview & summary</p>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -122,73 +126,69 @@ const AdminDashboard = () => {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-border/50 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Patient Inflow</CardTitle>
-            <CardDescription>Monthly patient admissions</CardDescription>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="border-border/50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Recent Appointments</CardTitle>
+            <CardDescription>Latest patient visits</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                <Tooltip
-                  cursor={{ fill: "hsl(var(--muted)/0.1)" }}
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-                <Bar dataKey="patients" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted/20 animate-pulse rounded-lg" />)}
+                </div>
+              ) : (
+                stats?.recentAppointments.slice(0, 5).map((apt: any) => (
+                  <div key={apt.$id} className="flex items-center justify-between p-3 rounded-lg bg-muted/10 border border-border/30">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                        {apt.patientName?.charAt(0) || "P"}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">{apt.patientName || "Anonymous"}</p>
+                        <p className="text-[10px] text-muted-foreground">{format(new Date(apt.appointmentDate), "MMM dd, hh:mm a")}</p>
+                      </div>
+                    </div>
+                    <Badge variant={apt.status === "completed" ? "success" : "secondary"} className="text-[10px] h-5 px-1.5">
+                      {apt.status}
+                    </Badge>
+                  </div>
+                ))
+              )}
+            </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/50 shadow-sm">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Departments</CardTitle>
-            <CardDescription>Patient distribution</CardDescription>
+          <CardHeader>
+            <CardTitle className="text-lg">Staff Availability</CardTitle>
+            <CardDescription>Currently active doctors</CardDescription>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={mockPieData}
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  innerRadius={60}
-                  dataKey="value"
-                  stroke="none"
-                  paddingAngle={5}
-                >
-                  {mockPieData.map((_, index) => (
-                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-4 space-y-2">
-              {mockPieData.map((item, i) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                    <span className="text-muted-foreground font-medium">{item.name}</span>
+            <div className="space-y-4">
+              {[
+                { name: "Dr. Sarah Chen", specialty: "Cardiology", status: "On Duty" },
+                { name: "Dr. Michael Ross", specialty: "Neurology", status: "In Surgery" },
+                { name: "Dr. Elena Gilbert", specialty: "Pediatrics", status: "On Break" },
+              ].map((staff, i) => (
+                <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/10 border border-border/30">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-accent/10 flex items-center justify-center text-accent">
+                      <Users className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{staff.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{staff.specialty}</p>
+                    </div>
                   </div>
-                  <span className="font-bold">{item.value}%</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`h-1.5 w-1.5 rounded-full ${
+                      staff.status === "On Duty" ? "bg-success" : 
+                      staff.status === "In Surgery" ? "bg-destructive" : "bg-warning"
+                    }`} />
+                    <span className="text-[10px] font-medium">{staff.status}</span>
+                  </div>
                 </div>
               ))}
             </div>
