@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { toast } from "sonner";
-import { Heart, Shield, Stethoscope, UserRound, ArrowLeft } from "lucide-react";
+import { Heart, ArrowLeft } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -142,34 +141,9 @@ const Auth = () => {
                         id="fullName"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Dr. Jane Smith"
+                        placeholder="Jane Smith"
                         required
                       />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="role">Role</Label>
-                      <Select value={role} onValueChange={setRole}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select your role" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="patient">
-                            <span className="flex items-center gap-2">
-                              <UserRound className="h-4 w-4" /> Patient
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="doctor">
-                            <span className="flex items-center gap-2">
-                              <Stethoscope className="h-4 w-4" /> Doctor
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="admin">
-                            <span className="flex items-center gap-2">
-                              <Shield className="h-4 w-4" /> Admin
-                            </span>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
                   </>
                 )}
