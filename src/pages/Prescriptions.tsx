@@ -1,22 +1,24 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
 import { Query } from "appwrite";
-import { format } from "date-fns";
-import { Pill } from "lucide-react";
+import { PrescriptionsTable } from "@/components/prescriptions/PrescriptionsTable";
+import { PrescriptionFormDialog } from "@/components/prescriptions/PrescriptionFormDialog";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 const Prescriptions = () => {
-  const { profile, role, user } = useAuth();
+  const { role, user } = useAuth();
+  const [isAddPrescriptionOpen, setIsAddPrescriptionOpen] = useState(false);
 
-  const { data: prescriptions = [] } = useQuery({
+  const { data: prescriptions = [], isLoading } = useQuery({
     queryKey: ["prescriptions", user?.$id, role],
     queryFn: async () => {
       if (!user?.$id) return [];
 
       let queries = [Query.orderDesc("$createdAt")];
       if (role === "patient") queries.push(Query.equal("patientId", user.$id));
-      // In user's schema, prescribingDoctor seems to be a field in prescriptions
 
       const res = await databases.listDocuments({
         databaseId: APPWRITE_CONFIG.databaseId,
@@ -24,15 +26,19 @@ const Prescriptions = () => {
         queries: queries
       });
 
-      // Fetch patient names for display if needed
+      // Fetch patient names
       const prescriptionsWithProfiles = await Promise.all(res.documents.map(async (rx) => {
         try {
-          const prof = await databases.getDocument({
+          const patientProf = await databases.getDocument({
             databaseId: APPWRITE_CONFIG.databaseId,
             collectionId: APPWRITE_CONFIG.collections.profiles,
             documentId: rx.patientId
           });
-          return { ...rx, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+          
+          return { 
+            ...rx, 
+            patient: { full_name: `${patientProf.firstName} ${patientProf.lastName}` }
+          };
         } catch {
           return rx;
         }
@@ -45,61 +51,35 @@ const Prescriptions = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Prescriptions</h1>
-        <p className="text-muted-foreground">
-          {role === "patient" ? "Your medications" : "Issued prescriptions"}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Prescriptions</h1>
+          <p className="text-muted-foreground">
+            {role === "patient" ? "View and manage your active medications." : "Issue and manage patient prescriptions."}
+          </p>
+        </div>
+        
+        {(role === "admin" || role === "doctor") && (
+          <Button onClick={() => setIsAddPrescriptionOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Issue Prescription
+          </Button>
+        )}
       </div>
 
-      {prescriptions.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Pill className="h-12 w-12 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground">No prescriptions found</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {prescriptions.map((rx: any) => (
-            <Card key={rx.$id}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Pill className="h-4 w-4 text-primary" />
-                    {rx.medicationName}
-                  </CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(rx.$createdAt), "MMM d, yyyy")}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                <div className="flex gap-4 text-sm">
-                  <span className="text-muted-foreground">Dosage:</span>
-                  <span>{rx.dosage}</span>
-                </div>
-                {rx.frequency && (
-                  <div className="flex gap-4 text-sm">
-                    <span className="text-muted-foreground">Frequency:</span>
-                    <span>{rx.frequency}</span>
-                  </div>
-                )}
-                {rx.expirationDate && (
-                  <div className="flex gap-4 text-sm">
-                    <span className="text-muted-foreground">Expires:</span>
-                    <span>{format(new Date(rx.expirationDate), "MMM d, yyyy")}</span>
-                  </div>
-                )}
-                {rx.notes && <p className="text-xs text-muted-foreground mt-2">{rx.notes}</p>}
-                <div className="pt-2 flex justify-between text-xs text-muted-foreground">
-                  {role !== "patient" && rx.patient && <span>Patient: {rx.patient.full_name}</span>}
-                  <span>Dr. {rx.prescribingDoctor || "Doctor"}</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+      {isLoading ? (
+        <div className="flex h-40 items-center justify-center">
+          <p className="text-muted-foreground animate-pulse">Loading prescriptions...</p>
         </div>
+      ) : (
+        <PrescriptionsTable prescriptions={prescriptions} />
+      )}
+
+      {(role === "admin" || role === "doctor") && (
+        <PrescriptionFormDialog
+          open={isAddPrescriptionOpen}
+          onOpenChange={setIsAddPrescriptionOpen}
+        />
       )}
     </div>
   );

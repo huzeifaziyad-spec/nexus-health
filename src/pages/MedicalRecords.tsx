@@ -1,16 +1,18 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { databases, APPWRITE_CONFIG } from "@/integrations/appwrite/client";
 import { Query } from "appwrite";
-import { format } from "date-fns";
-import { FileText } from "lucide-react";
+import { MedicalRecordsTable } from "@/components/medical-records/MedicalRecordsTable";
+import { MedicalRecordFormDialog } from "@/components/medical-records/MedicalRecordFormDialog";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 const MedicalRecords = () => {
-  const { profile, role, user } = useAuth();
+  const { role, user } = useAuth();
+  const [isAddRecordOpen, setIsAddRecordOpen] = useState(false);
 
-  const { data: records = [] } = useQuery({
+  const { data: records = [], isLoading } = useQuery({
     queryKey: ["medical-records", user?.$id, role],
     queryFn: async () => {
       if (!user?.$id) return [];
@@ -24,15 +26,34 @@ const MedicalRecords = () => {
         queries: queries
       });
 
-      // Fetch patient/doctor names if needed
+      // Fetch patient and doctor names
       const recordsWithProfiles = await Promise.all(res.documents.map(async (rec) => {
         try {
-          const prof = await databases.getDocument({
+          const patientProf = await databases.getDocument({
             databaseId: APPWRITE_CONFIG.databaseId,
             collectionId: APPWRITE_CONFIG.collections.profiles,
             documentId: rec.profileId
           });
-          return { ...rec, patient: { full_name: `${prof.firstName} ${prof.lastName}` } };
+          
+          let doctorName = null;
+          if (rec.doctorId) {
+            try {
+              const docProf = await databases.getDocument({
+                databaseId: APPWRITE_CONFIG.databaseId,
+                collectionId: APPWRITE_CONFIG.collections.profiles,
+                documentId: rec.doctorId
+              });
+              doctorName = `${docProf.firstName} ${docProf.lastName}`;
+            } catch (e) {
+              console.error("Could not fetch doctor profile", e);
+            }
+          }
+
+          return { 
+            ...rec, 
+            patient: { full_name: `${patientProf.firstName} ${patientProf.lastName}` },
+            doctor: doctorName ? { full_name: doctorName } : null
+          };
         } catch {
           return rec;
         }
@@ -45,55 +66,35 @@ const MedicalRecords = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Medical Records</h1>
-        <p className="text-muted-foreground">
-          {role === "patient" ? "Your health records" : "Patient health records"}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Medical Records</h1>
+          <p className="text-muted-foreground">
+            {role === "patient" ? "View your comprehensive health history." : "Manage and view patient medical records."}
+          </p>
+        </div>
+        
+        {(role === "admin" || role === "doctor") && (
+          <Button onClick={() => setIsAddRecordOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Record
+          </Button>
+        )}
       </div>
 
-      {records.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <FileText className="h-12 w-12 text-muted-foreground/30 mb-3" />
-            <p className="text-sm text-muted-foreground">No medical records found</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {records.map((rec: any) => (
-            <Card key={rec.$id}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">{rec.diagnosis || "General Checkup"}</CardTitle>
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(rec.visitDate || new Date()), "PPP")}
-                  </span>
-                </div>
-                {role !== "patient" && rec.patient && (
-                  <CardDescription>Patient: {rec.patient.full_name}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {rec.treatmentPlan && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Treatment</p>
-                    <p className="text-sm">{rec.treatmentPlan}</p>
-                  </div>
-                )}
-                {rec.notes && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Notes</p>
-                    <p className="text-sm">{rec.notes}</p>
-                  </div>
-                )}
-                {rec.doctor && (
-                  <p className="text-xs text-muted-foreground">Attending: Dr. {rec.doctor.full_name}</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+      {isLoading ? (
+        <div className="flex h-40 items-center justify-center">
+          <p className="text-muted-foreground animate-pulse">Loading medical records...</p>
         </div>
+      ) : (
+        <MedicalRecordsTable records={records} />
+      )}
+
+      {(role === "admin" || role === "doctor") && (
+        <MedicalRecordFormDialog
+          open={isAddRecordOpen}
+          onOpenChange={setIsAddRecordOpen}
+        />
       )}
     </div>
   );
