@@ -144,20 +144,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    let retryCount = 0;
+    const maxRetries = 3;
+
     const checkSession = async () => {
       try {
+        console.log(`AuthContext: Checking session (Attempt ${retryCount + 1})...`);
         const currentUser = await account.get();
         console.log("AuthContext: Session verified for", currentUser.email);
         setUser(currentUser);
         await fetchUserData(currentUser.$id, currentUser.labels);
+        setLoading(false);
       } catch (error: any) {
+        if (error.code === 401 && retryCount < maxRetries) {
+          retryCount++;
+          console.log(`AuthContext: No session found, retrying in 1s...`);
+          setTimeout(checkSession, 1000);
+          return;
+        }
+        
         if (error.code !== 401) {
           console.error("AuthContext: Session verification FAILED:", error.message);
         }
         setUser(null);
         setRole(null);
         setProfile(null);
-      } finally {
         setLoading(false);
       }
     };
