@@ -72,6 +72,12 @@ const Auth = () => {
         const firstName = nameParts[0] || "User";
         const lastName = nameParts.slice(1).join(" ") || "";
 
+        const permissions = [
+          `read("user:${userId}")`,
+          `update("user:${userId}")`,
+          `delete("user:${userId}")`
+        ];
+
         await databases.createDocument(
           APPWRITE_CONFIG.databaseId,
           APPWRITE_CONFIG.collections.profiles,
@@ -81,7 +87,8 @@ const Auth = () => {
             lastName: lastName,
             dateOfBirth: new Date("1900-01-01").toISOString(), // Required field
             role: role, // Save role directly in profile
-          }
+          },
+          permissions
         );
         toast.success("Account created successfully!");
       } else {
