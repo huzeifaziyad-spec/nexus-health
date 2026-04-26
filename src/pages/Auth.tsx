@@ -47,15 +47,15 @@ const Auth = () => {
     try {
       // Ensure any existing session is cleared first
       try {
-        await account.deleteSession({ sessionId: 'current' });
+        await account.deleteSession('current');
       } catch (e) {
         // Ignore error if no session was active
       }
 
-      await account.createSession({
-        userId: userId,
-        secret: otp
-      });
+      await account.createSession(
+        userId,
+        otp
+      );
 
       // SYNC NAME WITH AUTH SERVICE
       if (!isLogin && fullName) {
