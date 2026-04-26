@@ -35,11 +35,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       let profileRes = null;
 
       try {
-        profileRes = await databases.getDocument({
-          databaseId: APPWRITE_CONFIG.databaseId,
-          collectionId: APPWRITE_CONFIG.collections.profiles,
-          documentId: userId
-        });
+        profileRes = await databases.getDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.profiles,
+          userId
+        );
         console.log("AuthContext: Profile found in DB");
       } catch (e: any) {
         if (e.code === 404) {
@@ -54,27 +54,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const lastName = nameParts.slice(1).join(" ") || "";
 
           try {
-            profileRes = await databases.createDocument({
-              databaseId: APPWRITE_CONFIG.databaseId,
-              collectionId: APPWRITE_CONFIG.collections.profiles,
-              documentId: userId,
-              data: {
+            profileRes = await databases.createDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.profiles,
+              userId,
+              {
                 firstName: firstName,
                 lastName: lastName,
                 dateOfBirth: new Date("1900-01-01").toISOString(),
                 role: "patient"
               }
-            });
+            );
             console.log("AuthContext: Profile successfully created");
           } catch (createErr: any) {
             console.error("AuthContext: Failed to create profile document:", createErr);
             // If it already exists (race condition), try to fetch it one last time
             if (createErr.code === 409) {
-               profileRes = await databases.getDocument({
-                databaseId: APPWRITE_CONFIG.databaseId,
-                collectionId: APPWRITE_CONFIG.collections.profiles,
-                documentId: userId
-              });
+               profileRes = await databases.getDocument(
+                APPWRITE_CONFIG.databaseId,
+                APPWRITE_CONFIG.collections.profiles,
+                userId
+              );
             }
           }
         } else {
@@ -96,12 +96,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const lastName = nameParts.slice(1).join(" ") || "";
           
           try {
-            await databases.updateDocument({
-              databaseId: APPWRITE_CONFIG.databaseId,
-              collectionId: APPWRITE_CONFIG.collections.profiles,
-              documentId: userId,
-              data: { firstName, lastName }
-            });
+            await databases.updateDocument(
+              APPWRITE_CONFIG.databaseId,
+              APPWRITE_CONFIG.collections.profiles,
+              userId,
+              { firstName, lastName }
+            );
             profileRes.firstName = firstName;
             profileRes.lastName = lastName;
           } catch (updateError) {
@@ -161,9 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     try {
-      await account.deleteSession({
-        sessionId: 'current'
-      });
+      await account.deleteSession('current');
       setUser(null);
       setRole(null);
       setProfile(null);

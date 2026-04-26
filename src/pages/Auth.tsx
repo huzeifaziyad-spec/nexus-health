@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { toast } from "sonner";
-import { Heart, ArrowLeft } from "lucide-react";
+import { Heart, ArrowLeft, Chrome } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -72,17 +72,17 @@ const Auth = () => {
         const firstName = nameParts[0] || "User";
         const lastName = nameParts.slice(1).join(" ") || "";
 
-        await databases.createDocument({
-          databaseId: APPWRITE_CONFIG.databaseId,
-          collectionId: APPWRITE_CONFIG.collections.profiles,
-          documentId: userId,
-          data: {
+        await databases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.profiles,
+          userId,
+          {
             firstName: firstName,
             lastName: lastName,
             dateOfBirth: new Date("1900-01-01").toISOString(), // Required field
             role: role, // Save role directly in profile
           }
-        });
+        );
         toast.success("Account created successfully!");
       } else {
         toast.success("Welcome back!");
@@ -93,6 +93,18 @@ const Auth = () => {
       toast.error(error.message || "Invalid verification code");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await account.createOAuth2Session(
+        'google',
+        `${window.location.origin}/dashboard`,
+        `${window.location.origin}/auth`
+      );
+    } catch (error: any) {
+      toast.error(error.message);
     }
   };
 
@@ -160,6 +172,25 @@ const Auth = () => {
                 </div>
                 <Button type="submit" className="w-full" disabled={loading}>
                   {loading ? "Please wait..." : isLogin ? "Send Verification Code" : "Create Account"}
+                </Button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full gap-2"
+                  onClick={handleGoogleLogin}
+                >
+                  <Chrome className="h-4 w-4" />
+                  Google
                 </Button>
               </form>
             ) : (
