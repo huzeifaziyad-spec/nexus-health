@@ -43,15 +43,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         console.log("AuthContext: Profile found in DB");
       } catch (e: any) {
         if (e.code === 404) {
-          console.log("AuthContext: Profile not found, creating one...");
-          // Auto-create default profile for new/OAuth users
+          console.log("AuthContext: Profile not found, attempting creation...");
           const currentUser = await account.get();
           
-          // Get name from Auth, fallback to email prefix if empty
           const rawName = currentUser.name || currentUser.email.split('@')[0] || "User";
           const nameParts = rawName.split(" ");
           const firstName = nameParts[0] || "User";
           const lastName = nameParts.slice(1).join(" ") || "";
+
+          // Explicit permissions for the user to manage their own document
+          const permissions = [
+            `read("user:${userId}")`,
+            `update("user:${userId}")`,
+            `delete("user:${userId}")`
+          ];
 
           try {
             profileRes = await databases.createDocument(
@@ -59,16 +64,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               APPWRITE_CONFIG.collections.profiles,
               userId,
               {
-                firstName: firstName,
-                lastName: lastName,
+                firstName,
+                lastName,
                 dateOfBirth: new Date("1900-01-01").toISOString(),
                 role: "patient"
-              }
+              },
+              permissions
             );
-            console.log("AuthContext: Profile successfully created");
+            console.log("AuthContext: Profile successfully created with permissions");
           } catch (createErr: any) {
-            console.error("AuthContext: Failed to create profile document:", createErr);
-            // If it already exists (race condition), try to fetch it one last time
+            console.error("AuthContext: createDocument FAILED:", createErr.message, createErr);
+            // If it already exists (race condition), try to fetch it
             if (createErr.code === 409) {
                profileRes = await databases.getDocument(
                 APPWRITE_CONFIG.databaseId,
@@ -78,7 +84,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             }
           }
         } else {
-          console.error("AuthContext: Error fetching document:", e);
+          console.error("AuthContext: getDocument FAILED:", e.message);
           throw e;
         }
       }
@@ -89,7 +95,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (profileRes) {
         const dbName = (`${profileRes.firstName || ""} ${profileRes.lastName || ""}`).trim();
         
-        // If DB name is empty or default, and we have a better name from Auth, update DB
         if ((!dbName || dbName === "User") && authName && authName !== "User") {
           const nameParts = authName.split(" ");
           const firstName = nameParts[0] || "User";
@@ -104,8 +109,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
             profileRes.firstName = firstName;
             profileRes.lastName = lastName;
+            console.log("AuthContext: Profile name synced from Auth");
           } catch (updateError) {
-            console.error("AuthContext: Failed to sync name to profile:", updateError);
+            console.error("AuthContext: updateDocument FAILED:", updateError);
           }
         }
 
@@ -115,11 +121,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: finalDbName || authName
         });
       } else {
-        // Fallback if DB still missing
+        console.warn("AuthContext: No profile document available, using Auth fallback");
         setProfile({ full_name: authName });
       }
 
-      // Determine role: Priority 1: Auth Labels, Priority 2: Database Field
       let finalRole: AppRole = "patient";
       if (labels.includes("admin")) {
         finalRole = "admin";
@@ -132,8 +137,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
       setRole(finalRole);
-    } catch (error) {
-      console.error("AuthContext: Critical error in fetchUserData:", error);
+      console.log("AuthContext: Auth initialization complete. Role:", finalRole);
+    } catch (error: any) {
+      console.error("AuthContext: CRITICAL ERROR in fetchUserData:", error.message);
     }
   };
 
@@ -141,12 +147,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const checkSession = async () => {
       try {
         const currentUser = await account.get();
-        console.log("AuthContext: Session found for", currentUser.email);
+        console.log("AuthContext: Session verified for", currentUser.email);
         setUser(currentUser);
         await fetchUserData(currentUser.$id, currentUser.labels);
       } catch (error: any) {
         if (error.code !== 401) {
-          console.error("AuthContext: Session check failed:", error);
+          console.error("AuthContext: Session verification FAILED:", error.message);
         }
         setUser(null);
         setRole(null);
