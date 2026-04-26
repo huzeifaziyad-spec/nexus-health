@@ -13,6 +13,7 @@ import Prescriptions from "./pages/Prescriptions";
 import StaffManagement from "./pages/StaffManagement";
 import Analytics from "./pages/Analytics";
 import Billing from "./pages/Billing";
+import NewsFeed from "./pages/NewsFeed";
 import NotFound from "./pages/NotFound";
 import DashboardLayout from "./components/DashboardLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -43,6 +44,7 @@ const App = () => (
               <Route path="/staff" element={<StaffManagement />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/billing" element={<Billing />} />
+              <Route path="/newsfeed" element={<NewsFeed />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

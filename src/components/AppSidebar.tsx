@@ -27,10 +27,12 @@ import {
   LogOut,
   Stethoscope,
   ClipboardList,
+  Newspaper,
 } from "lucide-react";
 
 const patientLinks = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "News Feed", url: "/newsfeed", icon: Newspaper },
   { title: "Appointments", url: "/appointments", icon: Calendar },
   { title: "Medical Records", url: "/records", icon: FileText },
   { title: "Prescriptions", url: "/prescriptions", icon: Pill },
@@ -38,6 +40,7 @@ const patientLinks = [
 
 const doctorLinks = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "News Feed", url: "/newsfeed", icon: Newspaper },
   { title: "Appointments", url: "/appointments", icon: Calendar },
   { title: "Patient Records", url: "/records", icon: ClipboardList },
   { title: "Prescriptions", url: "/prescriptions", icon: Pill },
@@ -45,6 +48,7 @@ const doctorLinks = [
 
 const adminLinks = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
+  { title: "News Feed", url: "/newsfeed", icon: Newspaper },
   { title: "Staff Management", url: "/staff", icon: Users },
   { title: "Appointments", url: "/appointments", icon: Calendar },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
