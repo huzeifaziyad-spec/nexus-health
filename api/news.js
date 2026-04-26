@@ -13,9 +13,12 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const apiKey = process.env.VITE_NEWS_API_KEY;
+  const apiKey = process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ status: "error", message: "News API key not configured." });
+    return res.status(500).json({ 
+      status: "error", 
+      message: "News API key not configured. Please add VITE_NEWS_API_KEY to your Vercel Environment Variables." 
+    });
   }
 
   const { q = "health", page = "1" } = req.query;
