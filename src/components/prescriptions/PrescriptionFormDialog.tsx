@@ -107,6 +107,30 @@ export function PrescriptionFormDialog({ open, onOpenChange, recordToEdit }: Pre
           }
         );
         toast.success("Prescription issued successfully");
+
+        // Create notification for the patient
+        try {
+          await databases.createDocument(
+            APPWRITE_CONFIG.databaseId,
+            APPWRITE_CONFIG.collections.notifications || "notifications",
+            ID.unique(),
+            {
+              userId: data.patientId,
+              title: "New Prescription",
+              message: `Dr. ${profile?.firstName} ${profile?.lastName} issued a new prescription: ${data.medicationName}.`,
+              type: "prescription",
+              isRead: false,
+              link: "/prescriptions"
+            },
+            [
+              `read("user:${data.patientId}")`,
+              `update("user:${data.patientId}")`,
+              `delete("user:${data.patientId}")`
+            ]
+          );
+        } catch (e) {
+          console.error("Failed to send notification:", e);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ["prescriptions"] });
       onOpenChange(false);

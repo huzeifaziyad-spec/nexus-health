@@ -19,6 +19,7 @@ const MedicalRecords = () => {
 
       let queries = [Query.orderDesc("visitDate")];
       if (role === "patient") queries.push(Query.equal("profileId", user.$id));
+      if (role === "doctor") queries.push(Query.equal("doctorId", user.$id));
 
       const res = await databases.listDocuments({
         databaseId: APPWRITE_CONFIG.databaseId,

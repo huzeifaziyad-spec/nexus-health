@@ -137,6 +137,33 @@ const Appointments = () => {
           appointmentType: "general", // Default
         }
       );
+
+      // 4. Create notification for the recipient
+      const recipientId = role === "patient" ? docId : patientId;
+      const senderName = profile?.full_name || "User";
+      
+      try {
+        await databases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.notifications || "notifications",
+          ID.unique(),
+          {
+            userId: recipientId,
+            title: "New Appointment Request",
+            message: `${senderName} has booked an appointment for ${format(appointmentDate, "PPP 'at' p")}.`,
+            type: "appointment",
+            isRead: false,
+            link: "/appointments"
+          },
+          [
+            `read("user:${recipientId}")`,
+            `update("user:${recipientId}")`,
+            `delete("user:${recipientId}")`
+          ]
+        );
+      } catch (e) {
+        console.error("Failed to send booking notification:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });
@@ -155,12 +182,44 @@ const Appointments = () => {
 
   const updateAppointmentStatus = useMutation({
     mutationFn: async ({ appointmentId, status }: { appointmentId: string, status: string }) => {
+      // 1. Get the appointment to know who the patient is
+      const apt = await databases.getDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.appointments,
+        appointmentId
+      );
+
+      // 2. Update status
       await databases.updateDocument(
         APPWRITE_CONFIG.databaseId,
         APPWRITE_CONFIG.collections.appointments,
         appointmentId,
         { status }
       );
+
+      // 3. Create notification for the patient
+      try {
+        await databases.createDocument(
+          APPWRITE_CONFIG.databaseId,
+          APPWRITE_CONFIG.collections.notifications || "notifications",
+          ID.unique(),
+          {
+            userId: apt.profileId,
+            title: `Appointment ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+            message: `Your appointment on ${format(new Date(apt.appointmentDate), "PPP")} has been ${status}.`,
+            type: "appointment",
+            isRead: false,
+            link: "/appointments"
+          },
+          [
+            `read("user:${apt.profileId}")`,
+            `update("user:${apt.profileId}")`,
+            `delete("user:${apt.profileId}")`
+          ]
+        );
+      } catch (e) {
+        console.error("Failed to send notification:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["appointments"] });

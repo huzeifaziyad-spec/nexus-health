@@ -19,6 +19,7 @@ export const APPWRITE_CONFIG = {
         records: import.meta.env.VITE_APPWRITE_RECORDS_COLLECTION,
         prescriptions: import.meta.env.VITE_APPWRITE_PRESCRIPTIONS_COLLECTION,
         roles: import.meta.env.VITE_APPWRITE_ROLES_COLLECTION,
+        notifications: import.meta.env.VITE_APPWRITE_NOTIFICATIONS_COLLECTION || "notifications",
     }
 };
 

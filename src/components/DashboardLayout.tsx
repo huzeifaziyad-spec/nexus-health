@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Badge } from "@/components/ui/badge";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NotificationDropdown } from "./NotificationDropdown";
 
 const DashboardLayout = () => {
   const { role, profile } = useAuth();
@@ -30,10 +31,7 @@ const DashboardLayout = () => {
               <Badge variant="secondary" className="text-xs">
                 {roleLabel}
               </Badge>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-4 w-4" />
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
-              </Button>
+              <NotificationDropdown />
             </div>
           </header>
           <main className="flex-1 overflow-auto p-4 md:p-6">
